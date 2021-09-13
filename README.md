@@ -1,0 +1,1 @@
+# pg_tap_counter is the simple example of extension, that use [pg_time_buffer](https://github.com/munakoiso/pg_time_buffer)
