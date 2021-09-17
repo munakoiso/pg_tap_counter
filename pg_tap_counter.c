@@ -38,7 +38,7 @@ static void pgtc_shmem_startup(void);
 static volatile sig_atomic_t got_sigterm = false;
 
 /* One interval in buffer to count messages (s) */
-static int interval_s = 10;
+static int interval_s = 3;
 
 static int buffer_size_mb;
 
@@ -164,18 +164,22 @@ void on_delete(void* key, void* value) {
 
     pgtc_key = (pgtcKey*) key;
     pgtc_value = (pgtcValue*) value;
-    elog(LOG, "pgtc: %d of keys %d was deleted", pgtc_value->count, pgtc_key->foo);
+    elog(NOTICE, "pgtc: %d of keys %d was deleted", pgtc_value->count, pgtc_key->foo);
 }
 
 static void
 pgtc_shmem_startup(void) {
     if (prev_shmem_startup_hook)
         prev_shmem_startup_hook();
-
-    pgtb_init(extension_name, &add, &on_delete, interval_s, buffer_size_mb, sizeof(pgtcKey), sizeof(pgtcValue));
-    //if (!IsUnderPostmaster) {
-    // do something
-    //}
+    LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+    pgtb_init(extension_name,
+              &add,
+              &on_delete,
+              interval_s,
+              (uint64_t)buffer_size_mb * 1024 * 1024,
+              sizeof(pgtcKey),
+              sizeof(pgtcValue));
+    LWLockRelease(AddinShmemInitLock);
     return;
 }
 
@@ -190,7 +194,7 @@ pgtc_tap(PG_FUNCTION_ARGS) {
     memset(&value, 0, sizeof(pgtcValue));
     value.count = 1;
     pgtb_put(extension_name, &key, &value);
-    elog(LOG, "tap");
+    elog(NOTICE, "tap");
     PG_RETURN_VOID();
 }
 
@@ -199,7 +203,7 @@ PG_FUNCTION_INFO_V1(pgtc_reset);
 Datum
 pgtc_reset(PG_FUNCTION_ARGS) {
     pgtb_reset_stats(extension_name);
-    elog(LOG, "reset");
+    elog(NOTICE, "reset");
     PG_RETURN_VOID();
 }
 
