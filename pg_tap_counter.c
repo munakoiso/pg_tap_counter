@@ -34,6 +34,8 @@ void _PG_fini(void);
 /* Shared memory init */
 static void pgtc_shmem_startup(void);
 
+static LWLock* shmem_lock;
+
 /* Signal handling */
 static volatile sig_atomic_t got_sigterm = false;
 
@@ -70,6 +72,7 @@ pgtc_main(Datum main_arg)
     /* We're now ready to receive signals */
     BackgroundWorkerUnblockSignals();
 
+    LWLockInitialize(shmem_lock, LWLockNewTrancheId());
     while (!got_sigterm)
     {
         int rc;
@@ -90,7 +93,9 @@ pgtc_main(Datum main_arg)
             proc_exit(0);
         }
         /* Main work happens here */
+        LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
         pgtb_tick(extension_name);
+        LWLockRelease(shmem_lock);
     }
 
     /* No problems, so clean exit */
@@ -126,7 +131,6 @@ _PG_init(void)
     prev_shmem_startup_hook = shmem_startup_hook;
     shmem_startup_hook = pgtc_shmem_startup;
     define_custom_variables();
-    elog(WARNING, "allocate %d ", buffer_size_mb * 1024 * 1024);
     RequestAddinShmemSpace(buffer_size_mb * 1024 * 1024);
     /* Worker parameter and registration */
     MemSet(&worker, 0, sizeof(BackgroundWorker));
@@ -169,6 +173,7 @@ void on_delete(void* key, void* value) {
 
 static void
 pgtc_shmem_startup(void) {
+    bool found;
     if (prev_shmem_startup_hook)
         prev_shmem_startup_hook();
     LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
@@ -179,6 +184,7 @@ pgtc_shmem_startup(void) {
               (uint64_t)buffer_size_mb * 1024 * 1024,
               sizeof(pgtcKey),
               sizeof(pgtcValue));
+    shmem_lock = ShmemInitStruct("pg_tap_counter shmem lock", sizeof(LWLock), &found);
     LWLockRelease(AddinShmemInitLock);
     return;
 }
@@ -193,7 +199,9 @@ pgtc_tap(PG_FUNCTION_ARGS) {
     key.foo = 0;
     memset(&value, 0, sizeof(pgtcValue));
     value.count = 1;
+    LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
     pgtb_put(extension_name, &key, &value);
+    LWLockRelease(shmem_lock);
     elog(NOTICE, "tap");
     PG_RETURN_VOID();
 }
@@ -202,7 +210,9 @@ PG_FUNCTION_INFO_V1(pgtc_reset);
 
 Datum
 pgtc_reset(PG_FUNCTION_ARGS) {
+    LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
     pgtb_reset_stats(extension_name);
+    LWLockRelease(shmem_lock);
     elog(NOTICE, "reset");
     PG_RETURN_VOID();
 }
@@ -218,7 +228,7 @@ pgtc_show(PG_FUNCTION_ARGS) {
     char left_ts_s[50];
     char right_ts_s[50];
 
-
+    LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
     result_ptr = (void*) palloc(sizeof(pgtcKey) + sizeof(pgtcValue));
     memset(result_ptr, 0, sizeof(pgtcKey) + sizeof(pgtcValue));
     pgtb_get_stats(extension_name, result_ptr, &length, &ts_left, &ts_right);
@@ -227,6 +237,7 @@ pgtc_show(PG_FUNCTION_ARGS) {
     elog(NOTICE, "pgsk: Show stats from '%s' to '%s'", left_ts_s, right_ts_s);
     elog(NOTICE, "pgtc: result is %d", ((pgtcValue*)((char*)result_ptr + sizeof(pgtcKey)))->count);
     pfree(result_ptr);
+    LWLockRelease(shmem_lock);
     PG_RETURN_VOID();
 }
 
@@ -243,6 +254,7 @@ pgtc_show_by_time(PG_FUNCTION_ARGS) {
 
     timestamp_left = PG_GETARG_TIMESTAMP(0);
     timestamp_right = PG_GETARG_TIMESTAMP(1);
+    LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
     result_ptr = (void*) palloc(sizeof(pgtcKey) + sizeof(pgtcValue));
     memset(result_ptr, 0, sizeof(pgtcKey) + sizeof(pgtcValue));
     pgtb_get_stats_time_interval(extension_name, &timestamp_left, &timestamp_right, result_ptr, &length);
@@ -253,5 +265,6 @@ pgtc_show_by_time(PG_FUNCTION_ARGS) {
     elog(NOTICE, "pgsk: Show stats from '%s' to '%s'", timestamp_left_s, timestamp_right_s);
     elog(NOTICE, "pgtc: result is %d", ((pgtcValue*)((char*)result_ptr + sizeof(pgtcKey)))->count);
     pfree(result_ptr);
+    LWLockRelease(shmem_lock);
     PG_RETURN_VOID();
 }
