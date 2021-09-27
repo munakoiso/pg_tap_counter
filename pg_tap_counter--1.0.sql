@@ -10,11 +10,6 @@ CREATE FUNCTION pgtc_tap()
 AS 'MODULE_PATHNAME', 'pgtc_tap'
     LANGUAGE C STRICT;
 
-CREATE FUNCTION pgtc_reset()
-    RETURNS void
-AS 'MODULE_PATHNAME', 'pgtc_reset'
-    LANGUAGE C STRICT;
-
 CREATE FUNCTION pgtc_show_by_time(
     start_ts            timestamptz,
     stop_ts             timestamptz)

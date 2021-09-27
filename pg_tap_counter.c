@@ -199,21 +199,8 @@ pgtc_tap(PG_FUNCTION_ARGS) {
     key.foo = 0;
     memset(&value, 0, sizeof(pgtcValue));
     value.count = 1;
-    LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
     pgtb_put(extension_name, &key, &value);
-    LWLockRelease(shmem_lock);
     elog(NOTICE, "tap");
-    PG_RETURN_VOID();
-}
-
-PG_FUNCTION_INFO_V1(pgtc_reset);
-
-Datum
-pgtc_reset(PG_FUNCTION_ARGS) {
-    LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
-    pgtb_reset_stats(extension_name);
-    LWLockRelease(shmem_lock);
-    elog(NOTICE, "reset");
     PG_RETURN_VOID();
 }
 
