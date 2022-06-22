@@ -194,12 +194,13 @@ PG_FUNCTION_INFO_V1(pgtc_tap);
 Datum
 pgtc_tap(PG_FUNCTION_ARGS) {
     pgtcKey key;
+    bool stored;
     pgtcValue value;
     memset(&key, 0, sizeof(pgtcKey));
     key.foo = 0;
     memset(&value, 0, sizeof(pgtcValue));
     value.count = 1;
-    pgtb_put(extension_name, &key, &value);
+    stored = pgtb_put(extension_name, &key, &value);
     elog(NOTICE, "tap");
     PG_RETURN_VOID();
 }
