@@ -1,4 +1,4 @@
-\echo Use "CREATE EXTENSION logerrors" to load this file. \quit
+\echo Use "CREATE EXTENSION pg_tap_counter" to load this file. \quit
 
 CREATE FUNCTION pgtc_show()
     RETURNS void
